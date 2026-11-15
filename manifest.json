@@ -1,0 +1,11 @@
+{
+    "display_name": "Living World",
+    "loading_order": 21,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "efmvkt",
+    "version": "1.0.0",
+    "homePage": ""
+}
