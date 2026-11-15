@@ -594,3 +594,9 @@
 /* ═══════════════ быт героя ═══════════════ */
 .lw-bar.crit i { background: linear-gradient(90deg, var(--lw-warn), var(--lw-bad)); }
 .lw-bnote { padding: 10px 14px; border-left: 2px solid var(--lw-accent); border-radius: 4px 14px 14px 4px; background: var(--lw-soft); font-style: italic; }
+.lw-look { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding: 12px 14px; border: 1px solid var(--lw-line2); border-radius: 14px; background: var(--lw-card); }
+.lw-look small { color: var(--lw-accent); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+.lw-look b { font-size: 14px; font-weight: 600; }
+.lw-look span { color: var(--lw-muted); font-size: 12px; font-style: italic; }
+.lw-habit { padding: 9px 12px; margin-bottom: 6px; border: 1px solid var(--lw-line); border-radius: 12px; background: var(--lw-card); font-size: 13px; }
+.lw-habit small { display: block; margin-top: 2px; color: var(--lw-muted); font-size: 11px; }
