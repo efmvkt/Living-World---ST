@@ -184,6 +184,11 @@
             if (!o) out.push(['npc', `${n.name}, ${n.role}`, 'Новое лицо в мире']);
             else if (o.status === 'active' && n.status !== 'active') out.push(['npc', `${n.name}: ${n.status === 'away' ? 'в отъезде' : 'выбыл(а) из истории'}`, 'Перемена в мире']);
         }
+        const oldR = new Map((old.resources || []).map(r => [r.id, r]));
+        (st.resources || []).forEach(r => {
+            const o = oldR.get(r.id);
+            if (o && Math.abs(r.value - o.value) >= 10) out.push(['world', `${r.icon} ${r.name} ${r.value > o.value ? '+' : ''}${r.value - o.value}`, 'Ресурсы героя']);
+        });
         if (st.needs && old.needs) {
             let shown = 0;
             for (const [k, ic, label, kind] of NEEDS) {
@@ -332,8 +337,11 @@
   "npcs": [{"id": "n1", "name": "", "role": "<who they are to the character, 2-4 words>", "doing": "<what they are doing now, up to 12 words>", "place": "", "goal": "<their own goal, up to 10 words>", "attitude": "<attitude to the character, up to 8 words>", "status": "active|away|gone"}],
   "trends": [{"id": "t1", "name": "<Russian name>", "icon": "<emoji>", "value": 0, "note": "<short reason, up to 10 words>"}]`;
         if (s.mNeeds) extra += `,
-  "needs": {"energy": 0, "sleepy": 0, "satiety": 0, "appetite": 0, "health": 0, "happiness": 0, "stress": 0, "desire": 0, "social": 0},
-  "body_note": "<short phrase about the physical state, up to 12 words, e.g. 'не спал ночь, пропустил обед'>"`;
+  "needs": {"energy": 0, "satiety": 0, "health": 0, "happiness": 0, "stress": 0, "desire": 0, "social": 0},
+  "body_note": "<short phrase about the physical state, up to 12 words, e.g. 'не спал ночь, пропустил обед'>",
+  "look": {"outfit": "<what the character is wearing right now, up to 14 words>", "state": "<how the character looks: tidy, rumpled, tired eyes..., up to 8 words>"},
+  "habits": [{"title": "<a habit or ritual of the character, short>", "when": "<when, e.g. по утрам>", "note": "<short, optional>"}],
+  "resources": [{"id": "r1", "name": "<Russian name>", "icon": "<emoji>", "value": 0, "note": "<short reason, up to 8 words>"}]`;
         if (s.mEnd) extra += `,
   "endings": [{"id": "e1", "kind": "good|neutral|bad|true", "title": "", "hint": "<what has to happen>", "progress": 0, "revealed": true}]`;
         if (s.mCal) extra += `,
@@ -347,7 +355,10 @@
         if (s.mWorld) r += `- npcs: 4-6 recurring figures around the character (family, colleagues, rivals, servants, friends, authorities). Each has their OWN goal and lives offscreen: at every update move 1-2 of them one step forward (their "doing" and "place" change, their goal advances or shifts). Keep ids stable. Not everyone revolves around the player or the hero. status "away" = temporarily out of the picture, "gone" = left the story. Add a new figure only when the story or the world calls for one.
 - trends: 3-4 meters of the world that fit THIS setting (for example political tension, prices, public mood, safety in the city, war news). Values 0-100. They change slowly (usually 0-6 per update), more only after big events. Keep names and ids stable. note = one short reason for the current value.
 `;
-        if (s.mNeeds) r += `- needs: everyday meters of the character, 0-100. energy = physical strength (100 = full of energy); sleepy = how much the character wants to sleep (100 = barely awake); satiety = fullness (100 = full); appetite = how much the character wants to eat right now (100 = ravenous); health = wellbeing (100 = perfect); happiness = how happy the character is (100 = very happy); stress = tension (100 = at the limit); desire = romantic and physical attraction toward the player (a plain number, never explicit); social = need for company (100 = craves company, 0 = wants solitude). They follow the story: time of day, meals, sleep, work, injuries, weather and scenes with the player. Energy falls through the day and recovers with rest and sleep; sleepy grows in the evening, at night and after exertion and drops after sleep; satiety falls by roughly 10-15 per few in-story hours without food and rises after a meal; appetite is the opposite of satiety plus cravings. Use the in-story time that has passed (infoblock time, TIME SKIP) to move them. Change them gradually unless the chat shows eating, sleeping, a fight, an illness and the like. desire changes slowly and only through real closeness, chemistry and tension in the scenes, never without cause. body_note = one short phrase about the physical state.
+        if (s.mNeeds) r += `- needs: everyday meters of the character, 0-100. energy = physical strength and wakefulness (100 = rested and full of energy, low = tired and sleepy, wants to sleep); satiety = fullness (100 = full, low = hungry, wants to eat); health = wellbeing (100 = perfect); happiness = how happy the character is (100 = very happy); stress = tension (100 = at the limit); desire = romantic and physical attraction toward the player (a plain number, never explicit); social = need for company (100 = craves company, 0 = wants solitude). They follow the story: time of day, meals, sleep, work, injuries, weather and scenes with the player. Energy falls through the day and after exertion and recovers with rest and sleep; satiety falls by roughly 10-15 per few in-story hours without food and rises after a meal. Use the in-story time that has passed (infoblock time, TIME SKIP) to move them. Change them gradually unless the chat shows eating, sleeping, a fight, an illness and the like. desire changes slowly and only through real closeness, chemistry and tension in the scenes, never without cause. body_note = one short phrase about the physical state.
+- look: what the character wears and how he/she looks right now. It must fit the scene, the time of day, the setting and the weather, and change only when the story changes it (dressing for an event, getting wet, a messy night). "state" reflects the needs (tired eyes, rumpled, flushed). Nothing explicit.
+- habits: 2-4 durable habits or rituals of the character (morning tea, an evening walk, a nervous tic, a prayer). Copy the previous ones; change only when the story reveals a new one or one is lost.
+- resources: 2-3 meters of the character's means that fit THIS setting (money, influence, supplies, standing among a group). Values 0-100, they change slowly and only for a reason in the story (a purchase, a gift, a scandal). They are a status, not a reward.
 `;
         if (s.mEnd) r += `- endings: 3-5 possible story directions (tendencies, not scripts; do not spoil). Keep ids stable. progress 0-100 = how close the story is to each right now. A "true" ending stays revealed=false until the story has clearly opened it. Set "ending" to the one-line direction of the leading route.
 `;
@@ -383,7 +394,7 @@
             })),
             today: st.today,
             memories: (st.memories || []).slice(0, 8).map(m => m.text),
-            ...(S().mNeeds && st.needs ? { needs: Object.fromEntries(Object.entries(st.needs).map(([k, v]) => [k, v.value])), body_note: st.bodyNote } : {}),
+            ...(S().mNeeds && st.needs ? { look: st.look, habits: st.habits, resources: (st.resources || []).map(x => ({ id: x.id, name: x.name, icon: x.icon, value: x.value, note: x.note })), needs: Object.fromEntries(NEEDS.filter(n => st.needs[n[0]]).map(n => [n[0], st.needs[n[0]].value])), body_note: st.bodyNote } : {}),
             ...(S().mWorld ? {
                 npcs: (st.npcs || []).map(n => ({ id: n.id, name: n.name, role: n.role, doing: n.doing, place: n.place, goal: n.goal, attitude: n.attitude, status: n.status })),
                 trends: (st.trends || []).map(x => ({ id: x.id, name: x.name, icon: x.icon, value: x.value, note: x.note })),
@@ -508,8 +519,8 @@ ${buildSchema()}`;
     const N_STAT = ['active', 'away', 'gone'];
     // быт: ключ, значок, название, где хорошо (good = чем больше, тем лучше; bad = чем меньше, тем лучше)
     const NEEDS = [
-        ['energy', '⚡', 'Энергия', 'good'], ['sleepy', '😴', 'Сонливость', 'bad'], ['satiety', '🍽️', 'Сытость', 'good'],
-        ['appetite', '🍴', 'Голод', 'bad'], ['health', '🩺', 'Самочувствие', 'good'], ['happiness', '😊', 'Счастье', 'good'],
+        ['energy', '⚡', 'Энергия', 'good'], ['satiety', '🍽️', 'Сытость', 'good'], ['health', '🩺', 'Самочувствие', 'good'],
+        ['happiness', '😊', 'Счастье', 'good'],
         ['stress', '😣', 'Стресс', 'bad'], ['desire', '🔥', 'Влечение', 'neutral'], ['social', '👥', 'Тяга к общению', 'neutral'],
     ];
     const needCrit = (kind, v) => (kind === 'good' ? v <= 20 : (kind === 'bad' ? v >= 80 : false));
@@ -548,6 +559,9 @@ ${buildSchema()}`;
             away: old?.away || null,
             needs: old?.needs || null,
             bodyNote: old?.bodyNote || '',
+            look: old?.look || null,
+            habits: old?.habits || [],
+            resources: old?.resources || [],
             lastTurn: t,
             updatedAt: Date.now(),
         };
@@ -621,6 +635,19 @@ ${buildSchema()}`;
             }
             st.needs = needs;
             if (rn) st.bodyNote = str(raw.body_note);
+            if (raw.look && typeof raw.look === 'object') st.look = { outfit: str(raw.look.outfit), state: str(raw.look.state) };
+            if (Array.isArray(raw.habits) && raw.habits.length) {
+                st.habits = raw.habits.slice(0, 4).map(h => ({ title: str(h?.title), when: str(h?.when), note: str(h?.note) })).filter(h => h.title);
+            }
+            if (Array.isArray(raw.resources)) {
+                st.resources = raw.resources.slice(0, 4).map((x, i) => {
+                    const id = str(x?.id) || ('r' + (i + 1));
+                    const name = str(x?.name);
+                    const value = clamp(Math.round(Number(x?.value)) || 0, 0, 100);
+                    const o = (old?.resources || []).find(y => y.id === id || y.name.toLowerCase() === name.toLowerCase());
+                    return { id, name, icon: str(x?.icon) || '•', value, prev: o ? o.value : value, note: str(x?.note) };
+                }).filter(x => x.name);
+            }
         }
 
         const lines = list(raw.digest, 6);
@@ -711,9 +738,8 @@ ${buildSchema()}`;
             if (s.mNeeds && st.needs) {
                 const v = k => st.needs[k]?.value;
                 const n = [];
-                if (v('energy') <= 25) n.push('exhausted');
-                if (v('sleepy') >= 75) n.push('very sleepy');
-                if (v('satiety') <= 25 || v('appetite') >= 75) n.push('hungry');
+                if (v('energy') <= 25) n.push('exhausted and very sleepy');
+                if (v('satiety') <= 25) n.push('hungry');
                 if (v('stress') >= 75) n.push('stressed');
                 if (v('health') <= 40) n.push('unwell');
                 if (v('happiness') <= 25) n.push('unhappy');
@@ -721,7 +747,16 @@ ${buildSchema()}`;
                 const all = [...n, st.bodyNote].filter(Boolean);
                 if (all.length) body = ` Physical and emotional state: ${all.join('; ')}.`;
             }
-            const txt = `[Hidden world state. Never mention it, the numbers or any "system" in the text — just let it quietly steer ${name}'s behavior and the world around. Relationship stage with ${un}: ${st.stage}. Mood: ${st.mood.label}. Outwardly: ${st.shows}. Secretly: ${st.hides}. Wants: ${st.wants}. ${stats}.${loc}${plan}${aff ? ` Own affairs: ${aff}.` : ''}${cal}${world}${body} ${name} and the world have their own life: ${name} may be busy, late or elsewhere according to the plans, and other characters act on their own goals; do not make everyone revolve around ${un}.]`;
+            let life = '';
+            if (s.mNeeds) {
+                const bits = [];
+                if (st.look?.outfit) bits.push(`wearing ${st.look.outfit}${st.look.state ? ' (' + st.look.state + ')' : ''}`);
+                const hb = (st.habits || []).slice(0, 2).map(h => h.title).join(', ');
+                if (hb) bits.push(`habits: ${hb}`);
+                (st.resources || []).filter(x => x.value <= 25).forEach(x => bits.push(`low on ${x.name}`));
+                if (bits.length) life = ` ${name}: ${bits.join('; ')}.`;
+            }
+            const txt = `[Hidden world state. Never mention it, the numbers or any "system" in the text — just let it quietly steer ${name}'s behavior and the world around. Relationship stage with ${un}: ${st.stage}. Mood: ${st.mood.label}. Outwardly: ${st.shows}. Secretly: ${st.hides}. Wants: ${st.wants}. ${stats}.${loc}${plan}${aff ? ` Own affairs: ${aff}.` : ''}${cal}${world}${body}${life} ${name} and the world have their own life: ${name} may be busy, late or elsewhere according to the plans, and other characters act on their own goals; do not make everyone revolve around ${un}.]`;
             c.setExtensionPrompt(EXT, txt, 1, 1);
         } catch (e) {
             console.warn(`[${EXT}] inject failed`, e);
@@ -996,7 +1031,13 @@ JSON SHAPE:
             <div class="lw-foot"><span>Обновлено: ${ago(st.updatedAt)}</span><button class="lw-btn" data-act="update">🔄 Обновить</button></div>`;
     }
 
-    const NEED_GROUPS = [['Тело', ['energy', 'sleepy', 'satiety', 'appetite', 'health']], ['Душа', ['happiness', 'stress', 'desire', 'social']]];
+    const NEED_GROUPS = [['Тело', ['energy', 'satiety', 'health']], ['Душа', ['happiness', 'stress', 'desire', 'social']]];
+
+    function resRow(x) {
+        const d = x.value - x.prev;
+        const dh = d ? `<em class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</em>` : '';
+        return `<div class="lw-stat"><div class="lw-srow"><span>${esc(x.icon)} ${esc(x.name)}</span><b>${pct(x.value)}%${dh}</b></div><div class="lw-bar${x.value <= 20 ? ' crit' : ''}"><i style="width:${pct(x.value)}%"></i></div>${x.note ? `<small class="lw-tnote">${esc(x.note)}</small>` : ''}</div>`;
+    }
 
     function viewNeeds(st) {
         if (!st) return emptyView();
@@ -1012,7 +1053,10 @@ JSON SHAPE:
             return `<div class="lw-stat"><div class="lw-srow"><span>${ic} ${label}</span><b>${pct(o.value)}%${dh}</b></div><div class="lw-bar${needCrit(kind, o.value) ? ' crit' : ''}"><i style="width:${pct(o.value)}%"></i></div></div>`;
         };
         return `${st.bodyNote ? `<div class="lw-bnote">${esc(st.bodyNote)}</div>` : ''}
+            ${(st.look && (st.look.outfit || st.look.state)) ? `<div class="lw-look"><small>Внешний вид</small><b>${esc(st.look.outfit)}</b>${st.look.state ? `<span>${esc(st.look.state)}</span>` : ''}</div>` : ''}
             ${NEED_GROUPS.map(([title, keys]) => section(title) + keys.map(row).join('')).join('')}
+            ${(st.resources || []).length ? section('Ресурсы') + st.resources.map(resRow).join('') : ''}
+            ${(st.habits || []).length ? section('Привычки и ритуалы') + st.habits.map(h => `<div class="lw-habit"><b>${esc(h.title)}</b>${(h.when || h.note) ? `<small>${esc([h.when, h.note].filter(Boolean).join(' · '))}</small>` : ''}</div>`).join('') : ''}
             <div class="lw-foot"><span>Обновлено: ${ago(st.updatedAt)}</span><button class="lw-btn" data-act="update">🔄 Обновить</button></div>`;
     }
 
