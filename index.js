@@ -410,6 +410,8 @@
         const ch = focusChar();
         const cn = focusName();
         const un = c.name1 || 'User';
+        // окно чата растёт вместе с интервалом обновления: every + 2 сообщений, от 8 до 24
+        const win = clamp(Math.round(Number(s.every)) + 2 || 8, 8, 24);
 
         const system = `You are the hidden "World engine" of a roleplay. You read the story and keep the living state of the world around the character ${cn}: the character's inner state, his/her own schedule and affairs, the NPCs, the trends of the world. The world lives on its own and does not wait for the player (${un}). Reply with ONE valid JSON object only: no markdown, no comments, no text outside the JSON. All text values must be in Russian.`;
 
@@ -436,7 +438,7 @@
         p += `\nCURRENT STATE (turn ${turns()}):\n${old ? JSON.stringify(compact(old)) : 'none — create the world from scratch'}\n`;
         if (note) p += `\nNOTE: ${note}\n`;
         p += full ? '\nThe recent chat is the conversation above.\n'
-                  : `\nRECENT CHAT:\n${recent(old ? 8 : 6, 1100)}\n`;
+                  : `\nRECENT CHAT:\n${recent(old ? win : 6, win > 12 ? 700 : 1100)}\n`;
 
         p += `
 TASK: ${old ? 'Update' : 'Create'} the living state of the world from the story.
@@ -1259,10 +1261,6 @@ JSON SHAPE:
                 hb.innerHTML = gi.members.map(m => `<button class="lw-hero${m.avatar === fk ? ' active' : ''}" data-act="hero" data-av="${esc(m.avatar)}">${esc(m.name)}</button>`).join('');
             }
         }
-        const worldTab = document.querySelector('#lw-modal [data-tab="world"]');
-        if (worldTab) worldTab.style.display = S().mWorld ? '' : 'none';
-        const needsTab = document.querySelector('#lw-modal [data-tab="needs"]');
-        if (needsTab) needsTab.style.display = S().mNeeds ? '' : 'none';
         const sub = document.getElementById('lw-sub');
         if (sub) sub.textContent = st ? focusName() : '';
     }
