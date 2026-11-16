@@ -23,6 +23,8 @@
         mNeeds: true,      // быт: энергия, сон, еда, счастье, влечение
         mEnd: true,        // архив концовок
         mCal: true,        // календарь
+        rebuildN: 40,      // сколько сообщений читать при сборке мира по истории
+        rebuildLen: 1500,  // сколько знаков брать из каждого сообщения при сборке
         extra: '',         // свои пожелания к миру
         pos: null,
     };
@@ -222,9 +224,17 @@
         t = String(t || '');
         return t.length <= n ? t : t.slice(0, Math.round(n * 0.6)) + ' … ' + t.slice(-Math.round(n * 0.4));
     }
-    function recent(n, len) {
+    function recent(n, len, dates) {
         return ctx().chat.filter(m => m && !m.is_system).slice(-n)
-            .map(m => `${m.name}: ${cut(clean(m.mes), len)}`).join('\n\n');
+            .map(m => {
+                let tag = '';
+                if (dates) {
+                    const ib = String(m.mes || '').match(/\[IB\]([\s\S]*?)\[\/IB\]/i);
+                    const line = ib && ib[1].split('\n').map(x => x.trim()).find(x => /^L:/i.test(x));
+                    if (line) tag = ` [${line.slice(2).trim()}]`;
+                }
+                return `${m.name}${tag}: ${cut(clean(m.mes), len)}`;
+            }).join('\n\n');
     }
     const field = (ch, k) => ch?.[k] ?? ch?.data?.[k] ?? '';
 
@@ -404,7 +414,11 @@
         };
     }
 
-    function buildPrompts(old, full, note) {
+    function rebuildNote(n) {
+        return `REBUILD FROM HISTORY: the RECENT CHAT below is a long stretch of the story (${n} messages). Reconstruct the world as it stands at its END, using everything that happened in it. Fill "memories" with up to 12 durable facts (promises, conflicts, confessions, secrets, key events) and "events" with up to 12 chronicle lines in chronological order, oldest first. Build the affairs, the NPCs (every recurring character who appeared), the trends, the calendar and the endings from what the story established. Some messages carry a tag in brackets (place | date | time | weather): use these tags to place events on the in-story timeline. Do not invent facts that are not in the chat.`;
+    }
+
+    function buildPrompts(old, full, note, rb) {
         const c = ctx();
         const s = S();
         const ch = focusChar();
@@ -412,6 +426,8 @@
         const un = c.name1 || 'User';
         // окно чата растёт вместе с интервалом обновления: every + 2 сообщений, от 8 до 24
         const win = clamp(Math.round(Number(s.every)) + 2 || 8, 8, 24);
+        const nMsg = rb ? rb.n : (old ? win : 6);
+        const lenMsg = rb ? rb.len : (win > 12 ? 700 : 1100);
 
         const system = `You are the hidden "World engine" of a roleplay. You read the story and keep the living state of the world around the character ${cn}: the character's inner state, his/her own schedule and affairs, the NPCs, the trends of the world. The world lives on its own and does not wait for the player (${un}). Reply with ONE valid JSON object only: no markdown, no comments, no text outside the JSON. All text values must be in Russian.`;
 
@@ -438,7 +454,7 @@
         p += `\nCURRENT STATE (turn ${turns()}):\n${old ? JSON.stringify(compact(old)) : 'none — create the world from scratch'}\n`;
         if (note) p += `\nNOTE: ${note}\n`;
         p += full ? '\nThe recent chat is the conversation above.\n'
-                  : `\nRECENT CHAT:\n${recent(old ? win : 6, win > 12 ? 700 : 1100)}\n`;
+                  : `\nRECENT CHAT:\n${recent(nMsg, lenMsg, !!rb)}\n`;
 
         p += `
 TASK: ${old ? 'Update' : 'Create'} the living state of the world from the story.
@@ -467,9 +483,9 @@ ${buildSchema()}`;
         return fn.length === 0 ? [o, p] : [p, o];
     }
 
-    async function callLLM(system, prompt, full) {
+    async function callLLM(system, prompt, full, len) {
         const c = ctx();
-        const LEN = 2500;
+        const LEN = len || 2500;
 
         // выбран отдельный профиль подключения: все запросы Системы идут через него (дешёвая модель)
         const pid = S().profileId;
@@ -527,7 +543,16 @@ ${buildSchema()}`;
     ];
     const needCrit = (kind, v) => (kind === 'good' ? v <= 20 : (kind === 'bad' ? v >= 80 : false));
 
-    function normalize(raw, old, gap) {
+    // снимки состояния по ходам: чтобы можно было вернуть мир на любой момент, а не только на один шаг назад
+    const HIST_MAX = 15;
+    const strip = x => { const c = JSON.parse(JSON.stringify(x)); delete c.prev; delete c.history; delete c.papers; return c; };
+    function pushHistory(hist, st) {
+        const out = (hist || []).filter(h => h.turn < st.lastTurn);
+        out.unshift({ turn: st.lastTurn, at: Date.now(), state: strip(st) });
+        return out.slice(0, HIST_MAX);
+    }
+
+    function normalize(raw, old, gap, big) {
         const t = turns();
         const arr = v => (Array.isArray(v) ? v : []);
         const list = (v, n) => arr(v).map(str).filter(Boolean).slice(0, n);
@@ -564,6 +589,7 @@ ${buildSchema()}`;
             look: old?.look || null,
             habits: old?.habits || [],
             resources: old?.resources || [],
+            history: old?.history || [],
             lastTurn: t,
             updatedAt: Date.now(),
         };
@@ -655,16 +681,17 @@ ${buildSchema()}`;
         const lines = list(raw.digest, 6);
         if (lines.length && gap >= 1) st.away = { turn: t, days: gap, lines };
 
-        const events = arr(raw.events).slice(0, 4)
+        const events = arr(raw.events).slice(0, big ? 12 : 4)
             .map(e => ({ turn: t, type: LOG_TYPES.includes(e?.type) ? e.type : 'world', text: str(e?.text) }))
             .filter(e => e.text);
+        if (big) events.reverse();
         st.log = [...events, ...st.log].slice(0, 80);
 
         const d = str(raw.diary);
         if (d) st.diary = [{ turn: t, text: d }, ...st.diary].slice(0, 40);
 
         const known = new Set(st.memories.map(m => m.text.toLowerCase()));
-        for (const m of list(raw.memories, 3)) {
+        for (const m of list(raw.memories, big ? 12 : 3)) {
             if (!known.has(m.toLowerCase())) { st.memories.unshift({ turn: t, text: m }); known.add(m.toLowerCase()); }
         }
         st.memories = st.memories.slice(0, 40);
@@ -771,7 +798,7 @@ ${buildSchema()}`;
     let unseen = false;
     let skipTried = null;
 
-    const snapshot = x => { const c = JSON.parse(JSON.stringify(x)); delete c.prev; return c; };
+    const snapshot = x => { const c = JSON.parse(JSON.stringify(x)); delete c.prev; delete c.history; return c; };
 
     async function runUpdate(opts = {}) {
         if (busy) return false;
@@ -782,18 +809,21 @@ ${buildSchema()}`;
         busy = true;
         setBusyUI(true);
         try {
+            const rb = opts.rebuild || null;
+            const full = rb ? false : S().fullPreset;
             const old = opts.fresh ? null : getState();
             const gap = old ? gapDays(old) : 0;
-            const note = [opts.note, overdueNote(old), old ? skipNote(old) : ''].filter(Boolean).join(' ');
-            const { system, prompt } = buildPrompts(old, S().fullPreset, note);
-            const raw = await callLLM(system, prompt, S().fullPreset);
+            const note = [opts.note, overdueNote(old), old ? skipNote(old) : '', rb ? rebuildNote(rb.n) : ''].filter(Boolean).join(' ');
+            const { system, prompt } = buildPrompts(old, full, note, rb);
+            const raw = await callLLM(system, prompt, full, rb ? 6000 : (old ? 0 : 4000));
             if (!raw) {
                 toast('Не удалось получить ответ модели. Проверьте API или выключите режим полного пресета.', 'error', true);
                 return false;
             }
-            const st = normalize(raw, old, gap >= 2 ? gap : 0);
+            const st = normalize(raw, old, gap >= 2 ? gap : 0, !!rb);
             const cur = getState();
             st.prev = cur ? snapshot(cur) : null;
+            st.history = pushHistory(old?.history ?? cur?.history, st);
             setState(st);
             applyInjection();
             announce(old, st);
@@ -964,6 +994,41 @@ JSON SHAPE:
     const A_LABEL = { duty: 'ДОЛГ', social: 'ВСТРЕЧИ', personal: 'ЛИЧНОЕ', project: 'ПРОЕКТ', secret: 'СЕКРЕТ' };
     const N_LABEL = { active: '', away: 'в отъезде', gone: 'выбыл(а)' };
 
+    // сборка мира по истории: сколько последних сообщений прочитать
+    function rebuildBox() {
+        const s = S();
+        const total = (ctx().chat || []).filter(m => m && !m.is_system).length;
+        return `<div class="lw-rb"><small>Сейчас в чате ${total} сообщений. Мир прочитает последние:</small><div class="lw-rbrow"><input type="number" min="1" max="500" data-set="rebuildN" value="${num(s.rebuildN)}" class="lw-num"> сообщений по <input type="number" min="200" max="20000" step="100" data-set="rebuildLen" value="${num(s.rebuildLen)}" class="lw-num lw-num2"> знаков</div><button class="lw-btn lw-primary" data-act="rebuild">📚 Собрать мир по истории</button></div>`;
+    }
+
+    function restoreSnapshot(i) {
+        const cur = getState();
+        const h = cur?.history?.[i];
+        if (!cur || !h) return;
+        const restored = JSON.parse(JSON.stringify(h.state));
+        restored.papers = (cur.papers || []).filter(p => p.turn <= h.turn);
+        restored.history = cur.history.slice(i);
+        restored.prev = snapshot(cur);
+        setState(restored);
+        skipTried = null;
+        applyInjection();
+        render();
+        toast(`Мир вернулся на ход ${h.turn}`, 'success', true);
+    }
+
+    // чат стал короче, чем состояние мира: предлагаем вернуть снимок, подходящий к текущей длине чата
+    function syncBanner(st) {
+        if (!st) return '';
+        const t = turns();
+        if (t >= (st.lastTurn || 0)) return '';
+        const i = (st.history || []).findIndex(h => h.turn <= t);
+        const msg = `Чат стал короче: в нём ${t} ответов героя, а состояние мира записано на ${num(st.lastTurn)}-м.`;
+        if (i >= 0 && st.history[i].turn < st.lastTurn) {
+            return `<div class="lw-sync"><span>${msg}</span><button class="lw-btn" data-act="restore" data-i="${i}">↩ Вернуть состояние на ход ${num(st.history[i].turn)}</button></div>`;
+        }
+        return `<div class="lw-sync"><span>${msg} Подходящего снимка нет, можно пересоздать мир в ⚙.</span></div>`;
+    }
+
     function emptyView() {
         const gi = groupInfo();
         if (gi && !focusKey()) {
@@ -976,6 +1041,7 @@ JSON SHAPE:
             <div class="lw-etitle">Мир не создан</div>
             <div class="lw-edesc">Он прочитает карточку персонажа и вашу историю: заполнит состояние героя, его расписание и дела, жителей вокруг и тренды мира.</div>
             <button class="lw-btn lw-primary" data-act="init">✨ Создать мир</button>
+            ${rebuildBox()}
         </div>`;
     }
 
@@ -1209,6 +1275,8 @@ JSON SHAPE:
         return `${section('Хроника мира')}${ev || '<div class="lw-none">Пока пусто</div>'}${mem ? section('Память: обещания, конфликты, секреты') + mem : ''}${dia ? section('Дневник героя') + dia : ''}`;
     }
 
+    const NUM_RANGE = { every: [1, 20], rebuildN: [1, 500], rebuildLen: [200, 20000] };
+
     function viewSettings() {
         const s = S();
         const cur = getState();
@@ -1232,6 +1300,8 @@ JSON SHAPE:
             ${chk('fullPreset', 'Обновлять через полный пресет', 'Дороже по токенам, экспериментально. Нужно, если модель отказывается от обновлений без пресета')}
             <div class="lw-sec">Пожелания к миру</div>
             <textarea class="lw-ta" data-set="extra" rows="3" placeholder="Например: больше политики, у героя напряжённая служба, жизнь города поживее">${esc(s.extra)}</textarea>
+            <div class="lw-sec">Собрать мир по истории</div>${rebuildBox()}
+            ${(cur?.history || []).length ? `<div class="lw-sec">Снимки состояния</div><div class="lw-hint" style="text-align:left;margin:0 0 6px">Мир запоминает состояние после каждого обновления (последние ${(cur.history || []).length}). Удалили часть чата — верните мир на нужный ход. Более новые снимки при этом удаляются, последний шаг отменяется кнопкой «Откатить».</div>${cur.history.map((h, i) => `<div class="lw-led"><span>ход ${num(h.turn)}</span><div style="flex:1">${esc(ago(h.at))}</div><button class="lw-mini-btn" data-act="restore" data-i="${i}">вернуть</button></div>`).join('')}` : ''}
             <div class="lw-foot2">
                 <button class="lw-btn" data-act="rollback" ${cur?.prev ? '' : 'disabled'}>↩ Откатить</button>
                 <button class="lw-btn" data-act="export" ${cur ? '' : 'disabled'}>⬇ Экспорт</button>
@@ -1249,7 +1319,7 @@ JSON SHAPE:
         if (!body) return;
         const st = getState();
         const views = { status: viewStatus, needs: viewNeeds, agenda: viewAgenda, world: viewWorld, calendar: viewCalendar, news: viewNews, endings: viewEndings, log: viewLog };
-        body.innerHTML = tab === 'settings' ? viewSettings() : (views[tab] || viewStatus)(st);
+        body.innerHTML = syncBanner(st) + (tab === 'settings' ? viewSettings() : (views[tab] || viewStatus)(st));
         document.querySelectorAll('#lw-modal .lw-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
         const hb = document.getElementById('lw-heroes');
         if (hb) {
@@ -1324,7 +1394,16 @@ JSON SHAPE:
                 calSel = (calSel === d) ? null : d;
                 render();
             } else if (act === 'calclear') { calSel = null; render(); }
-            else if (act === 'paper') await runPaper();
+            else if (act === 'restore') {
+                const h = getState()?.history?.[Number(el.dataset.i)];
+                if (h && confirm(`Вернуть мир на ход ${h.turn}? Более новые снимки будут удалены.`)) restoreSnapshot(Number(el.dataset.i));
+            } else if (act === 'rebuild') {
+                const s0 = S();
+                const n = clamp(Math.round(Number(s0.rebuildN)) || 40, 1, 500);
+                if (!getState() || confirm(`Пересобрать мир по последним ${n} сообщениям? Текущее состояние будет заменено (отменить можно кнопкой «Откатить»).`)) {
+                    await runUpdate({ fresh: true, rebuild: { n, len: clamp(Math.round(Number(s0.rebuildLen)) || 1500, 200, 20000) } });
+                }
+            } else if (act === 'paper') await runPaper();
             else if (act === 'pprev') { paperIdx++; render(); }
             else if (act === 'pnext') { paperIdx = Math.max(0, paperIdx - 1); render(); }
             else if (act === 'news') {
@@ -1341,6 +1420,7 @@ JSON SHAPE:
                 const cur = getState();
                 if (cur?.prev) {
                     const restored = JSON.parse(JSON.stringify(cur.prev));
+                    restored.history = cur.history || [];
                     restored.prev = snapshot(cur);
                     setState(restored);
                     applyInjection();
@@ -1392,7 +1472,7 @@ JSON SHAPE:
             const s = S();
             const k = el.dataset.set;
             if (el.type === 'checkbox') s[k] = el.checked;
-            else if (el.type === 'number') s[k] = clamp(Math.round(Number(el.value)) || DEFAULTS[k], 1, 20);
+            else if (el.type === 'number') { const r = NUM_RANGE[k] || [1, 20]; s[k] = clamp(Math.round(Number(el.value)) || DEFAULTS[k], r[0], r[1]); }
             else s[k] = el.value;
             saveS();
             applyTheme();
@@ -1517,6 +1597,16 @@ JSON SHAPE:
             applyInjection();
             render();
         });
+        if (event_types.MESSAGE_DELETED) {
+            eventSource.on(event_types.MESSAGE_DELETED, () => {
+                const st = getState();
+                if (st && turns() < (st.lastTurn || 0)) {
+                    if (!isOpen()) { unseen = true; updateFabDot(); }
+                    popup('event', 'Чат стал короче состояния мира. Откройте окно: там можно вернуть мир на нужный ход.', 'Мир не совпадает с чатом');
+                }
+                render();
+            });
+        }
         console.log(`[${EXT}] loaded`);
     });
 })();
