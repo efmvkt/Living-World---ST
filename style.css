@@ -600,3 +600,12 @@
 .lw-look span { color: var(--lw-muted); font-size: 12px; font-style: italic; }
 .lw-habit { padding: 9px 12px; margin-bottom: 6px; border: 1px solid var(--lw-line); border-radius: 12px; background: var(--lw-card); font-size: 13px; }
 .lw-habit small { display: block; margin-top: 2px; color: var(--lw-muted); font-size: 11px; }
+
+/* ═══════════════ чат короче состояния ═══════════════ */
+.lw-sync { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px dashed color-mix(in srgb, var(--lw-warn) 70%, transparent); border-radius: 14px; background: var(--lw-soft); font-size: 13px; }
+
+/* ═══════════════ сборка мира по истории ═══════════════ */
+.lw-rb { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 12px 14px; border: 1px solid var(--lw-line); border-radius: 14px; background: var(--lw-card); text-align: left; }
+.lw-rb small { color: var(--lw-muted); font-size: 12px; }
+.lw-rbrow { font-size: 13px; }
+.lw-num2 { width: 72px; }
